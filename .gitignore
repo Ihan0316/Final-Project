@@ -1,1 +1,32 @@
-/image/donghyeon/donghyeon_IMG_4331_1760402987.jpg
+*.jpg
+*.pt
+*.npy
+*.pb
+*.faiss
+.idea/
+.vscode/
+__pycache__/
+*.log
+# Scripts - scripts 폴더에 정리된 .sh 파일만 포함
+*.sh
+!scripts/**/*.sh
+
+*.csv
+
+# Documentation - 주의: README.md 같은 문서는 포함되어야 할 수 있음
+*.md
+
+*.txt
+!requirements.txt
+*.zip
+.DS_Store
+.dockerignore
+*.backup
+
+# Config files - 주의: k8s 설정 파일 등은 포함되어야 할 수 있음
+*.yaml
+*.yml
+/final/
+venv/
+.env
+node_modules/

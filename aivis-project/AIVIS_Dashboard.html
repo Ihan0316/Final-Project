@@ -1,0 +1,1271 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AIVIS 실시간 통합 관제 (상세 뷰)</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        html,
+        body {
+            height: 100%;
+            margin: 0;
+            font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
+            background-color: #1a1a2e;
+            color: #e0e0e0;
+        }
+
+        body {
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* 헤더 */
+        header {
+            background-color: #2a2a4e;
+            padding: 10px 20px;
+            text-align: center;
+            border-bottom: 2px solid #4ecca3;
+            flex-shrink: 0;
+            position: relative;
+        }
+
+        header h1 {
+            margin: 0;
+            color: #ffffff;
+            font-size: 1.8em;
+        }
+
+        /* -------------------------
+         * 1. 메인 대시보드 (전체 뷰)
+         * ------------------------- */
+        #main-dashboard {
+            display: grid;
+            grid-template-columns: 3fr 1fr;
+            gap: 15px;
+            padding: 15px;
+            flex-grow: 1;
+            overflow: hidden;
+        }
+
+        .cctv-section {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            overflow: hidden;
+        }
+
+        .cctv-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            grid-template-rows: repeat(2, 1fr);
+            gap: 15px;
+            flex-grow: 1;
+            height: 100%;
+            /* 카메라 수에 따라 동적으로 조정 */
+        }
+
+        /* 카메라 0대일 때: Grid 숨김 (final 폴더 방식) */
+        .cctv-grid.cameras-0 {
+            display: none !important;
+        }
+
+        /* 카메라 1대일 때: 1x1 그리드 (final 폴더 방식) */
+        .cctv-grid.cameras-1 {
+            grid-template-columns: 1fr !important;
+            grid-template-rows: 1fr !important;
+        }
+
+        /* 카메라 2대일 때: 2x1 그리드 (final 폴더 방식) */
+        .cctv-grid.cameras-2 {
+            grid-template-columns: repeat(2, 1fr) !important;
+            grid-template-rows: 1fr !important;
+        }
+
+        /* 카메라 3대일 때: 2x2 그리드 (final 폴더 방식) */
+        .cctv-grid.cameras-3 {
+            grid-template-columns: repeat(2, 1fr) !important;
+            grid-template-rows: repeat(2, 1fr) !important;
+        }
+
+        /* 카메라 4대일 때: 2x2 그리드 (final 폴더 방식) */
+        .cctv-grid.cameras-4 {
+            grid-template-columns: repeat(2, 1fr) !important;
+            grid-template-rows: repeat(2, 1fr) !important;
+        }
+
+        .cctv-feed {
+            background-color: #000;
+            border: 2px solid #4a4a7e;
+            border-radius: 8px;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            /* 클릭 가능 표시 */
+            min-height: 200px;
+            /* 최소 높이 보장 */
+            display: none !important;
+            /* 초기 상태: 모든 구역 숨김 (final 폴더 방식) */
+            visibility: hidden;
+        }
+
+        /* 연결된 카메라만 표시 (final 폴더 방식) */
+        .cctv-feed.active {
+            display: block !important;
+            visibility: visible !important;
+        }
+
+        /* 연결되지 않은 카메라 강제 숨김 (final 폴더 방식) */
+        .cctv-feed.inactive {
+            display: none !important;
+            visibility: hidden !important;
+        }
+
+        .cctv-feed:hover {
+            border-color: #4ecca3;
+            transform: scale(1.02);
+        }
+
+        .cctv-feed .title {
+            position: absolute;
+            top: 0;
+            left: 0;
+            background-color: rgba(0, 0, 0, 0.6);
+            padding: 5px 10px;
+            font-size: 1em;
+            font-weight: bold;
+            border-bottom-right-radius: 8px;
+            z-index: 10;
+            /* 제목이 이미지 위에 표시 */
+        }
+
+        .cctv-feed img {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            background-color: #000;
+            z-index: 1;
+            /* 이미지가 배경 위에 표시 */
+            display: block;
+            /* 블록 요소로 표시 */
+            visibility: visible;
+            /* 항상 보이도록 */
+        }
+
+        .cctv-feed.highlight-danger {
+            border-color: #e74c3c;
+            box-shadow: 0 0 15px rgba(231, 76, 60, 0.7);
+        }
+
+        .cctv-feed.highlight-warning {
+            border-color: #f1c40f;
+        }
+
+        .control-tower {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            overflow-y: auto;
+            background-color: #2a2a4e;
+            padding: 20px;
+            border-radius: 10px;
+        }
+
+        .widget {
+            background-color: #1a1a2e;
+            padding: 15px;
+            border-radius: 8px;
+            flex-shrink: 0;
+        }
+
+        .widget h2 {
+            margin-top: 0;
+            margin-bottom: 15px;
+            color: #f0f0f0;
+            font-size: 1.1em;
+            border-bottom: 1px solid #4a4a7e;
+            padding-bottom: 10px;
+        }
+
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            text-align: center;
+        }
+
+        .kpi-item p {
+            margin: 0;
+        }
+
+        .kpi-label {
+            font-size: 0.9em;
+            color: #a0a0c0;
+        }
+
+        .kpi-value {
+            font-size: 2em;
+            font-weight: bold;
+        }
+
+        #kpi-workers {
+            color: #fff;
+        }
+
+        #kpi-violations {
+            color: #f1c40f;
+        }
+
+        #kpi-dangers {
+            color: #e74c3c;
+        }
+
+        #kpi-f1-score {
+            color: #4ecca3;
+        }
+
+        .alert-list {
+            list-style: none;
+            padding-left: 0;
+            margin: 0;
+            height: 300px;
+            overflow-y: auto;
+        }
+
+        .alert-list li {
+            padding: 10px;
+            border-bottom: 1px solid #4a4a7e;
+            font-size: 0.9em;
+            line-height: 1.5;
+        }
+
+        .alert-list li:first-child {
+            background-color: rgba(78, 204, 163, 0.1);
+        }
+
+        .alert-time {
+            color: #a0a0c0;
+            display: block;
+            font-size: 0.8em;
+        }
+
+        .alert-level-DANGER {
+            color: #e74c3c;
+            font-weight: bold;
+        }
+
+        .alert-level-WARNING {
+            color: #f1c40f;
+            font-weight: bold;
+        }
+
+        .alert-who {
+            color: #fff;
+            font-weight: bold;
+        }
+
+        .alert-where {
+            color: #4ecca3;
+        }
+
+        .chart-container {
+            position: relative;
+            height: 180px;
+        }
+
+        /* -------------------------
+         * 2. 상세 대시보드 (드릴다운 뷰)
+         * ------------------------- */
+        #detail-dashboard {
+            display: grid;
+            /* 기본값은 none, JS로 grid로 변경 */
+            grid-template-columns: 2.5fr 1fr;
+            /* 큰 영상 + 상세 패널 */
+            gap: 15px;
+            padding: 15px;
+            flex-grow: 1;
+            overflow: hidden;
+        }
+
+        .detail-video {
+            background-color: #000;
+            border: 2px solid #4ecca3;
+            border-radius: 8px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 2em;
+            color: #555;
+            flex-direction: column;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .detail-video img {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            background-color: #000;
+        }
+
+        .detail-video h2 {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            background-color: rgba(0, 0, 0, 0.6);
+            padding: 5px 15px;
+            border-radius: 5px;
+        }
+
+        #detail-video-title {
+            font-size: 1.5em;
+            color: #fff;
+            margin-bottom: 20px;
+        }
+
+        .detail-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            overflow-y: auto;
+            background-color: #2a2a4e;
+            padding: 20px;
+            border-radius: 10px;
+        }
+
+        /* 상세 뷰용 차트 컨테이너 */
+        .detail-chart-container {
+            position: relative;
+            height: 250px;
+            /* 상세 뷰 차트는 더 크게 */
+        }
+
+        /* 복귀 버튼 */
+        #back-button {
+            position: absolute;
+            top: 50%;
+            left: 20px;
+            transform: translateY(-50%);
+            background-color: #4ecca3;
+            color: #1a1a2e;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 0.9em;
+            display: none;
+            /* 상세 뷰에서만 보이도록 JS로 제어 */
+        }
+
+        #back-button:hover {
+            background-color: #fff;
+        }
+    </style>
+</head>
+
+<body>
+
+    <header>
+        <button id="back-button" onclick="showMainView()">&#9664; 전체 뷰로 복귀</button>
+        <h1>AIVIS 실시간 통합 관제 시스템</h1>
+    </header>
+
+    <main id="main-dashboard" class="main-container">
+        <section class="cctv-section">
+            <div class="cctv-grid">
+                <div class="cctv-feed" id="cctv-A-1" onclick="showDetailView('A-1')">
+                    <img id="stream-A-1" alt="A-1 구역 스트림">
+                    <div class="title">A-1 구역 (절단 작업장)</div>
+                </div>
+                <div class="cctv-feed" id="cctv-A-2" onclick="showDetailView('A-2')">
+                    <img id="stream-A-2" alt="A-2 구역 스트림">
+                    <div class="title">A-2 구역 (용접 작업장)</div>
+                </div>
+                <div class="cctv-feed" id="cctv-B-1" onclick="showDetailView('B-1')">
+                    <img id="stream-B-1" alt="B-1 구역 스트림">
+                    <div class="title">B-1 구역 (고소 작업대)</div>
+                </div>
+                <div class="cctv-feed" id="cctv-B-2" onclick="showDetailView('B-2')">
+                    <img id="stream-B-2" alt="B-2 구역 스트림">
+                    <div class="title">B-2 구역 (자재 적치장)</div>
+                </div>
+            </div>
+        </section>
+
+        <aside class="control-tower">
+            <div class="widget">
+                <h2>실시간 현황 (KPI)</h2>
+                <div class="kpi-grid">
+                    <div class="kpi-item">
+                        <p class="kpi-label">현재 인원</p>
+                        <p class="kpi-value" id="kpi-workers">0</p>
+                    </div>
+                    <div class="kpi-item">
+                        <p class="kpi-label">탐지 성능 (F1)</p>
+                        <p class="kpi-value" id="kpi-f1-score">-</p>
+                    </div>
+                    <div class="kpi-item">
+                        <p class="kpi-label">안전장비 위반</p>
+                        <p class="kpi-value" id="kpi-violations">0</p>
+                    </div>
+                    <div class="kpi-item">
+                        <p class="kpi-label">위험 행동 감지</p>
+                        <p class="kpi-value" id="kpi-dangers">0</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="widget" style="flex-grow: 1;">
+                <h2>실시간 알림 (Who/Where/What)</h2>
+                <ul class="alert-list" id="alertList"></ul>
+            </div>
+
+            <div class="widget">
+                <h2>구역별 위험 발생 빈도</h2>
+                <div class="chart-container">
+                    <canvas id="byAreaChart"></canvas>
+                </div>
+            </div>
+        </aside>
+    </main>
+
+    <main id="detail-dashboard" style="display: none;">
+        <section class="detail-video">
+            <h2 id="detail-video-title">A-1 구역 상세 뷰</h2>
+            <img id="detail-stream" style="width: 100%; height: 100%; object-fit: contain;" alt="상세 뷰 스트림">
+        </section>
+
+        <aside class="detail-panel">
+            <div class="widget">
+                <h2 id="detail-area-title">A-1 구역 상세 정보</h2>
+                <p><b>현재 작업자:</b> <span id="detail-worker-list">-</span></p>
+                <p><b>주요 위험 요인:</b> <span id="detail-hazards">-</span></p>
+            </div>
+
+            <div class="widget">
+                <h2>이 구역의 최근 알림</h2>
+                <ul class="alert-list" id="detailAlertList" style="height: 200px;">
+                </ul>
+            </div>
+
+            <div class="widget">
+                <h2>이 구역의 시간대별 위험 빈도</h2>
+                <div class="detail-chart-container">
+                    <canvas id="detailHourChart"></canvas>
+                </div>
+            </div>
+        </aside>
+    </main>
+
+    <script>
+        // 차트 객체 변수
+        let byAreaChart, detailHourChart;
+        let violationCounts = { 'A-1': 0, 'A-2': 0, 'B-1': 0, 'B-2': 0 };
+
+        // 실시간 데이터 저장
+        const areas = ['A-1', 'A-2', 'B-1', 'B-2'];
+        const allAlerts = []; // 모든 알림을 저장할 배열
+        const recognizedPeople = new Set(); // 현재 인식된 사람들 (중복 제거)
+        let totalViolations = 0; // 전체 위반 수
+        let totalDangers = 0; // 전체 위험 행동 수
+        let currentAreaPeople = {}; // 구역별 현재 작업자 목록
+        let detailChartUpdateInterval = null; // 상세 뷰 차트 업데이트 인터벌
+
+        // 동일 위반 쿨다운(중복 카운팅 방지): 5분
+        const KPI_COOLDOWN_MS = 5 * 60 * 1000;
+        const kpiCooldownMap = new Map(); // key -> lastTs
+
+        // 최적화: 처리 주기 제한 (디바운스)
+        let lastProcessTs = 0;
+        const PROCESS_INTERVAL_MS = 200; // 0.2초마다 처리
+
+        // 알림 속도 제한 (1초당 최대 1개)
+        let lastAlertTime = 0;
+        let pendingAlerts = []; // 대기 중인 알림 큐
+        const ALERT_INTERVAL = 1000; // 1초 (밀리초)
+
+        // 최근 알림 중복 제거를 위한 캐시
+        const recentAlertCache = new Map(); // key: `${level}|${area}|${worker}|${hazard}` -> timestamp
+        const RECENT_ALERT_TTL_MS = 1500;
+
+        // WebSocket 연결 변수
+        let ws = null;
+        let reconnectAttempts = 0;
+        const maxReconnectAttempts = 5;
+
+        // 서버 주소 설정 (현재 페이지의 호스트 기반)
+        function getWebSocketUrl() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const host = window.location.hostname;
+            const port = window.location.port || (window.location.protocol === 'https:' ? '443' : '80');
+
+            // Kubernetes 환경: 같은 포트 사용
+            // 브라우저가 포트 30001로 접속하면 WebSocket도 포트 30001 사용
+            // Kubernetes 서비스가 포트 30001 -> 8000으로 라우팅
+            if (port === '' || port === '80' || port === '443') {
+                // 기본 포트인 경우 포트 번호 생략
+                return `${protocol}//${host}/ws/dashboard`;
+            } else {
+                // 동일 포트 사용 (Kubernetes가 자동으로 라우팅)
+                return `${protocol}//${host}:${port}/ws/dashboard`;
+            }
+        }
+
+        // DOM 로드 완료 시
+        document.addEventListener('DOMContentLoaded', () => {
+            Chart.defaults.color = '#e0e0e0';
+            Chart.defaults.borderColor = '#4a4a7e';
+
+            // [메인] 구역별 위험 빈도 (막대 차트)
+            const ctxBar = document.getElementById('byAreaChart').getContext('2d');
+            byAreaChart = new Chart(ctxBar, {
+                type: 'bar',
+                data: {
+                    labels: areas,
+                    datasets: [{
+                        data: Object.values(violationCounts),
+                        backgroundColor: 'rgba(231, 76, 60, 0.7)'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { beginAtZero: true }
+                    }
+                }
+            });
+
+            // [상세] 시간대별 위험 빈도 (꺾은선 차트)
+            const ctxLine = document.getElementById('detailHourChart').getContext('2d');
+            detailHourChart = new Chart(ctxLine, {
+                type: 'line',
+                data: {
+                    labels: ['09시', '10시', '11시', '12시', '13시', '14시', '15시'],
+                    datasets: [{
+                        label: '위험/위반 횟수',
+                        data: [0, 0, 0, 0, 0, 0, 0],
+                        borderColor: '#f1c40f',
+                        tension: 0.1
+                    }]
+                },
+                options: { responsive: true, maintainAspectRatio: false }
+            });
+
+            // 초기 Grid 레이아웃 설정 (카메라 0대, final 폴더 방식)
+            const gridElement = document.querySelector('.cctv-grid');
+            if (gridElement) {
+                gridElement.classList.add('cameras-0');
+                // 모든 구역을 초기에 inactive로 설정
+                areas.forEach((areaId) => {
+                    const feedElement = document.getElementById(`cctv-${areaId}`);
+                    if (feedElement) {
+                        feedElement.classList.remove('active');
+                        feedElement.classList.add('inactive');
+                    }
+                });
+            }
+
+            // WebSocket 연결 시작
+            connectWebSocket();
+
+            // API 폴링 시작 (WebSocket 백업 및 초기 데이터 로드)
+            startApiPolling();
+
+            // MJPEG 스트림 시작 (모든 구역에 대해, 현재는 하나의 스트림만 있음)
+            startVideoStreams();
+
+            // 카메라 연결 상태 주기적 확인 (5초마다)
+            setInterval(startVideoStreams, 5000);
+        });
+
+        // API 폴링 함수 (WebSocket 백업 및 초기 데이터 로드)
+        let apiPollingInterval = null;
+        function startApiPolling() {
+            const fetchModelResults = async () => {
+                try {
+                    const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
+                    const host = window.location.hostname;
+                    const port = window.location.port || (window.location.protocol === 'https:' ? '443' : '80');
+
+                    const apiUrl = port === '' || port === '80' || port === '443'
+                        ? `${protocol}//${host}/api/model-results`
+                        : `${protocol}//${host}:${port}/api/model-results`;
+
+                    const response = await fetch(apiUrl);
+                    if (response.ok) {
+                        const result = await response.json();
+                        if (result.status === 'success' && result.data) {
+                            // WebSocket 데이터와 동일하게 처리
+                            handleServerData(result.data);
+                        }
+                    }
+                } catch (error) {
+                    console.error('API 폴링 오류:', error);
+                }
+            };
+
+            // 즉시 한 번 실행 (초기 데이터 로드)
+            fetchModelResults();
+
+            // 3초마다 API 폴링 (WebSocket 백업)
+            apiPollingInterval = setInterval(fetchModelResults, 3000);
+        }
+
+        // 비디오 스트림 시작 함수 (카메라 연결 상태에 따라 동적으로 처리)
+        async function startVideoStreams() {
+            const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
+            const host = window.location.hostname;
+            const port = window.location.port || (window.location.protocol === 'https:' ? '443' : '80');
+
+            // 기존 인터벌 정리 (중복 방지)
+            areas.forEach((areaId) => {
+                const imgElement = document.getElementById(`stream-${areaId}`);
+                if (imgElement && imgElement.dataset.intervalId) {
+                    clearInterval(parseInt(imgElement.dataset.intervalId));
+                    imgElement.dataset.intervalId = null;
+                }
+            });
+
+            // 연결된 카메라 정보 가져오기
+            let connectedCameras = [];
+            try {
+                const apiBaseUrl = port === '' || port === '80' || port === '443'
+                    ? `${protocol}//${host}/api`
+                    : `${protocol}//${host}:${port}/api`;
+
+                const response = await fetch(`${apiBaseUrl}/cameras`);
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('카메라 API 응답:', data);
+                    if (data.status === 'success' && data.data) {
+                        // 여러 형식 지원
+                        if (data.data.cameras && Array.isArray(data.data.cameras)) {
+                            connectedCameras = data.data.cameras.filter(c => c && c.id !== undefined);
+                        } else if (data.data.camera_ids && Array.isArray(data.data.camera_ids)) {
+                            connectedCameras = data.data.camera_ids.map(id => ({ id: id }));
+                        } else if (Array.isArray(data.data)) {
+                            connectedCameras = data.data.filter(c => c && (c.id !== undefined || c.cam_id !== undefined))
+                                .map(c => ({ id: c.id || c.cam_id }));
+                        }
+                        console.log(`연결된 카메라 ${connectedCameras.length}대 감지:`, connectedCameras.map(c => `cam_id=${c.id}`).join(', '));
+                    } else {
+                        console.warn('카메라 API 응답 형식 오류:', data);
+                    }
+                } else {
+                    console.warn(`카메라 API 요청 실패: ${response.status} ${response.statusText}`);
+                }
+            } catch (error) {
+                console.warn('카메라 정보 가져오기 실패:', error);
+            }
+
+            // Grid 레이아웃 업데이트 (카메라 수에 따라)
+            const gridElement = document.querySelector('.cctv-grid');
+            if (gridElement) {
+                // 기존 클래스 제거
+                gridElement.classList.remove('cameras-0', 'cameras-1', 'cameras-2', 'cameras-3', 'cameras-4');
+                // 새로운 클래스 추가
+                gridElement.classList.add(`cameras-${Math.min(connectedCameras.length, 4)}`);
+            }
+
+            // 연결된 카메라가 없으면 모든 구역 숨기기 (final 폴더 방식)
+            if (connectedCameras.length === 0) {
+                console.log('연결된 카메라가 없습니다. 모든 구역을 숨깁니다.');
+                areas.forEach((areaId) => {
+                    const imgElement = document.getElementById(`stream-${areaId}`);
+                    const feedElement = document.getElementById(`cctv-${areaId}`);
+                    if (imgElement) {
+                        imgElement.style.display = 'none';
+                        imgElement.style.visibility = 'hidden';
+                        imgElement.src = ''; // 스트림 중지
+                    }
+                    if (feedElement) {
+                        feedElement.classList.remove('active');
+                        feedElement.classList.add('inactive');
+                        feedElement.style.display = 'none';
+                        feedElement.style.visibility = 'hidden';
+                    }
+                });
+                return;
+            }
+
+            // 카메라 개수에 따라 구역에 1:1 매핑하여 스트림 연결
+            connectedCameras.forEach((camera, index) => {
+                // index에 따라 구역 결정 (0→A-1, 1→A-2, 2→B-1, 3→B-2)
+                if (index >= areas.length) {
+                    console.warn(`카메라가 ${connectedCameras.length}대인데 구역은 ${areas.length}개뿐입니다. 카메라 ${index + 1}번째는 무시됩니다.`);
+                    return;
+                }
+
+                const areaId = areas[index];
+                const camId = camera.id;
+                const imgElement = document.getElementById(`stream-${areaId}`);
+                const feedElement = document.getElementById(`cctv-${areaId}`);
+
+                if (imgElement && feedElement) {
+                    // 해당 카메라의 스트림 URL 구성
+                    const areaStreamUrl = port === '' || port === '80' || port === '443'
+                        ? `${protocol}//${host}/stream?cam_id=${camId}`
+                        : `${protocol}//${host}:${port}/stream?cam_id=${camId}`;
+
+                    // MJPEG 스트림 연결 (캐시 방지를 위해 타임스탬프 추가)
+                    imgElement.src = areaStreamUrl + '&t=' + Date.now();
+
+                    // 구역 표시 (final 폴더 방식: active 클래스 사용)
+                    feedElement.classList.remove('inactive');
+                    feedElement.classList.add('active');
+                    imgElement.style.display = 'block';
+                    imgElement.style.visibility = 'visible';
+                    imgElement.style.opacity = '1';
+                    feedElement.style.display = 'block';
+                    feedElement.style.visibility = 'visible';
+
+                    let retryCount = 0;
+                    const maxRetries = 10; // 재시도 횟수 증가
+                    let lastErrorTime = 0;
+
+                    imgElement.onerror = (e) => {
+                        const now = Date.now();
+                        // 너무 빠른 재시도 방지 (최소 1초 간격)
+                        if (now - lastErrorTime < 1000) {
+                            return;
+                        }
+                        lastErrorTime = now;
+
+                        // 구역 스트림 연결 실패 (재시도 예정)
+
+                        if (retryCount < maxRetries) {
+                            retryCount++;
+                            // 2초 후 재연결 시도 (캐시 방지를 위해 타임스탬프 업데이트)
+                            setTimeout(() => {
+                                const newUrl = areaStreamUrl + '&t=' + Date.now();
+                                // 구역 스트림 재연결 시도
+                                imgElement.src = newUrl;
+                            }, 2000);
+                        } else {
+                            // 구역 스트림 연결 최대 재시도 횟수 초과
+                            // 실패 시에도 요소는 표시 (검은 화면)
+                            imgElement.style.opacity = '1';
+                        }
+                    };
+
+                    imgElement.onload = () => {
+                        // 구역 스트림 연결 성공
+                        imgElement.style.opacity = '1'; // 로드 성공 시 불투명
+                        imgElement.style.visibility = 'visible';
+                        retryCount = 0; // 성공 시 재시도 카운터 리셋
+                    };
+
+                    // 주기적으로 연결 상태 확인 (MJPEG 스트림 유지)
+                    const checkInterval = setInterval(() => {
+                        if (!imgElement.complete || imgElement.naturalWidth === 0) {
+                            // 이미지가 로드되지 않았으면 재연결
+                            // 구역 스트림 재연결 (주기적 체크)
+                            const currentSrc = imgElement.src.split('&t=')[0];
+                            imgElement.src = currentSrc + '&t=' + Date.now();
+                        }
+                    }, 5000); // 5초마다 체크
+
+                    // 요소 제거 시 인터벌 정리
+                    imgElement.dataset.intervalId = checkInterval;
+                } else {
+                    // 구역 이미지 요소를 찾지 못함
+                    console.warn(`구역 ${areaId}의 이미지 요소를 찾을 수 없습니다.`);
+                }
+            });
+
+            // 연결되지 않은 나머지 구역 숨기기 (final 폴더 방식)
+            for (let i = connectedCameras.length; i < areas.length; i++) {
+                const areaId = areas[i];
+                const imgElement = document.getElementById(`stream-${areaId}`);
+                const feedElement = document.getElementById(`cctv-${areaId}`);
+                if (imgElement) {
+                    imgElement.style.display = 'none';
+                    imgElement.style.visibility = 'hidden';
+                    imgElement.src = ''; // 스트림 중지
+                    // 기존 인터벌 정리
+                    if (imgElement.dataset.intervalId) {
+                        clearInterval(parseInt(imgElement.dataset.intervalId));
+                        imgElement.dataset.intervalId = null;
+                    }
+                }
+                if (feedElement) {
+                    feedElement.classList.remove('active');
+                    feedElement.classList.add('inactive');
+                    feedElement.style.display = 'none';
+                    feedElement.style.visibility = 'hidden';
+                }
+            }
+
+            console.log(`✅ 비디오 스트림 설정 완료: ${connectedCameras.length}대 카메라 표시, ${areas.length - connectedCameras.length}개 구역 숨김`);
+        }
+
+        // WebSocket 연결 함수
+        function connectWebSocket() {
+            const wsUrl = getWebSocketUrl();
+            // WebSocket 연결 시도
+
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = () => {
+                // WebSocket 연결 성공
+                reconnectAttempts = 0;
+                // 연결 상태 표시
+                const headerTitle = document.querySelector('header h1');
+                if (headerTitle) {
+                    headerTitle.textContent = 'AIVIS 실시간 통합 관제 시스템 (연결됨)';
+                }
+
+                // 주기적으로 ping 메시지 전송 (연결 유지)
+                const pingInterval = setInterval(() => {
+                    if (ws && ws.readyState === WebSocket.OPEN) {
+                        try {
+                            ws.send(JSON.stringify({ type: 'ping' }));
+                        } catch (e) {
+                            // Ping 전송 오류
+                            clearInterval(pingInterval);
+                        }
+                    } else {
+                        clearInterval(pingInterval);
+                    }
+                }, 25000); // 25초마다 ping
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    // JSON 메시지 처리 (바이너리는 이미지이므로 무시)
+                    if (typeof event.data === 'string') {
+                        const data = JSON.parse(event.data);
+
+                        // 연결 확인 메시지 처리
+                        if (data.type === 'connected' || data.type === 'heartbeat' || data.type === 'pong') {
+                            // 서버 연결 확인 응답 수신
+                            return;
+                        }
+
+                        // 실제 데이터 처리
+                        handleServerData(data);
+                    }
+                } catch (e) {
+                    // 데이터 파싱 오류
+                }
+            };
+
+            ws.onerror = (error) => {
+                // WebSocket 오류 발생
+                const headerTitle = document.querySelector('header h1');
+                if (headerTitle) {
+                    headerTitle.textContent = 'AIVIS 실시간 통합 관제 시스템 (연결 오류)';
+                }
+            };
+
+            ws.onclose = (event) => {
+                // WebSocket 연결 종료
+                const headerTitle = document.querySelector('header h1');
+                if (headerTitle) {
+                    headerTitle.textContent = 'AIVIS 실시간 통합 관제 시스템 (연결 끊김)';
+                }
+
+                // 재연결 시도 (정상 종료 코드가 아닌 경우)
+                if (event.code !== 1000 && reconnectAttempts < maxReconnectAttempts) {
+                    reconnectAttempts++;
+                    // 재연결 시도 (3초 후)
+                    setTimeout(connectWebSocket, 3000);
+                } else if (reconnectAttempts >= maxReconnectAttempts) {
+                    // 최대 재연결 시도 횟수 초과
+                }
+            };
+        }
+
+        // 서버 데이터 처리 함수
+        function handleServerData(data) {
+            // 처리 주기 제한
+            const nowTs = Date.now();
+            if (nowTs - lastProcessTs < PROCESS_INTERVAL_MS) return;
+            lastProcessTs = nowTs;
+
+            if (!data || typeof data !== 'object') return;
+
+            // KPI 데이터 처리 (API 응답 형식)
+            if (data.kpi_data && typeof data.kpi_data === 'object') {
+                const kpi = data.kpi_data;
+                if (typeof kpi.totalWorkers === 'number') {
+                    const workersEl = document.getElementById('kpi-workers');
+                    if (workersEl) workersEl.textContent = kpi.totalWorkers;
+                }
+            }
+
+            // 현재 인식된 사람 수 업데이트 (WebSocket 형식)
+            if (data.recognized_faces && Array.isArray(data.recognized_faces)) {
+                recognizedPeople.clear();
+                data.recognized_faces.forEach(face => {
+                    if (face.name && face.name !== 'Unknown') {
+                        recognizedPeople.add(face.name);
+                    }
+                });
+                const workersEl = document.getElementById('kpi-workers');
+                if (workersEl) workersEl.textContent = recognizedPeople.size;
+            }
+
+            // 히트맵 카운트 처리 (API 응답 형식: 객체)
+            if (data.heatmap_counts && typeof data.heatmap_counts === 'object') {
+                Object.keys(data.heatmap_counts).forEach(areaId => {
+                    violationCounts[areaId] = data.heatmap_counts[areaId] || 0;
+                });
+                if (byAreaChart) {
+                    byAreaChart.data.datasets[0].data = Object.values(violationCounts);
+                    byAreaChart.update('none');
+                }
+            }
+
+            // 알림 배열 처리 (API 응답 형식)
+            if (data.alerts && Array.isArray(data.alerts)) {
+                data.alerts.forEach(alert => {
+                    const level = alert.level || 'WARNING';
+                    const areaId = alert.area || 'A-1';
+                    const personName = alert.worker || alert.recognized_name || '알 수 없음';
+                    const hazard = alert.hazard || '위반 감지';
+                    const alertTimestamp = alert.timestamp || nowTs;
+
+                    // 알림 중복 제거
+                    const key = `${level}|${areaId}|${personName}|${hazard}`;
+                    const prevTs = recentAlertCache.get(key) || 0;
+                    if (nowTs - prevTs < RECENT_ALERT_TTL_MS) return;
+                    recentAlertCache.set(key, alertTimestamp * 1000); // timestamp는 초 단위이므로 밀리초로 변환
+
+                    // 큐에 적재
+                    pendingAlerts.push({ level, areaId, personName, hazard });
+                });
+
+                // 대기 중 알림 처리
+                processPendingAlerts();
+            }
+
+            // 위반 사항 처리 (WebSocket 형식: 배열)
+            if (data.violations && Array.isArray(data.violations)) {
+                data.violations.forEach(violation => {
+                    const violations = violation.violations || [];
+                    const personName = violation.recognized_name || 'Unknown';
+
+                    violations.forEach(viol => {
+                        if (!viol || (typeof viol !== 'string' && typeof viol !== 'number')) return;
+                        const violStr = String(viol).toLowerCase();
+
+                        // 분류: 위험 상황 vs PPE 위반
+                        const isDanger = violStr.includes('넘어짐') || violStr.includes('fall');
+                        const level = isDanger ? 'DANGER' : 'WARNING';
+
+                        // 텍스트 매핑 및 카테고리화
+                        let hazardText = '';
+                        let violationType = '';
+
+                        // PPE: 안전모
+                        if (
+                            violStr.includes('no-hardhat') || violStr.includes('hardhat') ||
+                            violStr.includes('no-helmet') || violStr.includes('helmet') ||
+                            violStr.includes('안전모')
+                        ) {
+                            hazardText = '안전모 미착용';
+                            violationType = 'PPE 위반내역';
+                        }
+                        // PPE: 안전조끼
+                        else if (
+                            violStr.includes('no-safety vest') || violStr.includes('safety vest') ||
+                            violStr.includes('vest') || violStr.includes('안전조끼')
+                        ) {
+                            hazardText = '안전조끼 미착용';
+                            violationType = 'PPE 위반내역';
+                        }
+                        // PPE: 마스크
+                        else if (
+                            violStr.includes('no-mask') || violStr.includes('mask') || violStr.includes('마스크')
+                        ) {
+                            hazardText = '마스크 미착용';
+                            violationType = 'PPE 위반내역';
+                        }
+                        // 위험 행동: 넘어짐
+                        else if (violStr.includes('fall') || violStr.includes('넘어짐')) {
+                            hazardText = '넘어짐 감지 (위험 행동)';
+                            violationType = '위험상황발생내역';
+                        } else {
+                            // 기타 위반은 PPE 위반으로 분류 (안전장비 관련 가능성)
+                            hazardText = String(viol);
+                            violationType = 'PPE 위반내역';
+                        }
+
+                        // 표시할 텍스트: 카테고리 + 상세 내용
+                        const displayText = `${violationType}: ${hazardText}`;
+
+                        // 구역 매핑 (단일 카메라 환경 기준)
+                        const areaId = 'A-1';
+
+                        // KPI 누적 (동일 위반 5분 쿨다운 적용)
+                        const kpiKey = `${areaId}|${personName}|${displayText}`;
+                        const lastKpiTs = kpiCooldownMap.get(kpiKey) || 0;
+                        const shouldCountKPI = (nowTs - lastKpiTs) >= KPI_COOLDOWN_MS;
+
+                        if (shouldCountKPI) {
+                            kpiCooldownMap.set(kpiKey, nowTs);
+
+                            if (isDanger) {
+                                totalDangers++;
+                                const dEl = document.getElementById('kpi-dangers');
+                                if (dEl) dEl.textContent = totalDangers;
+                            } else {
+                                totalViolations++;
+                                const vEl = document.getElementById('kpi-violations');
+                                if (vEl) vEl.textContent = totalViolations;
+                            }
+
+                            // 구역별 카운트 누적 및 차트 갱신 (KPI에 포함될 때만 증가)
+                            violationCounts[areaId] = (violationCounts[areaId] || 0) + 1;
+                            if (byAreaChart) {
+                                byAreaChart.data.datasets[0].data = Object.values(violationCounts);
+                                byAreaChart.update('none');
+                            }
+                        }
+
+                        // 알림 중복 제거
+                        const key = `${level}|${areaId}|${personName}|${displayText}`;
+                        const prevTs = recentAlertCache.get(key) || 0;
+                        if (nowTs - prevTs < RECENT_ALERT_TTL_MS) return; // 최근 중복
+                        recentAlertCache.set(key, nowTs);
+
+                        // 만료 제거
+                        for (const [k, t] of recentAlertCache) {
+                            if (nowTs - t > RECENT_ALERT_TTL_MS) recentAlertCache.delete(k);
+                        }
+
+                        // 큐에 적재
+                        pendingAlerts.push({ level, areaId, personName, hazard: displayText });
+                    });
+                });
+
+                // 대기 중 알림 처리
+                processPendingAlerts();
+            }
+        }
+
+        // [핵심] 상세 뷰 보여주기
+        function showDetailView(areaId) {
+            // 1. 뷰 전환
+            document.getElementById('main-dashboard').style.display = 'none';
+            document.getElementById('detail-dashboard').style.display = 'grid';
+            document.getElementById('back-button').style.display = 'block';
+
+            // 2. 상세 뷰 내용 업데이트
+            document.getElementById('detail-video-title').innerText = `${areaId} 구역 상세 뷰`;
+            document.getElementById('detail-area-title').innerText = `${areaId} 구역 상세 정보`;
+
+            // 3. 상세 뷰 스트림 시작
+            const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
+            const host = window.location.hostname;
+            const port = window.location.port || (window.location.protocol === 'https:' ? '443' : '80');
+
+            const detailStreamUrl = port === '' || port === '80' || port === '443'
+                ? `${protocol}//${host}/stream?cam_id=0`
+                : `${protocol}//${host}:${port}/stream?cam_id=0`;
+
+            const detailImg = document.getElementById('detail-stream');
+            if (detailImg) {
+                detailImg.src = detailStreamUrl + '&t=' + Date.now();
+                detailImg.onload = () => {
+                    // 상세 뷰 스트림 연결 성공
+                };
+                detailImg.onerror = () => {
+                    // 상세 뷰 스트림 연결 실패
+                };
+            }
+
+            // 현재 작업자 목록 업데이트
+            const areaPeople = Array.from(recognizedPeople);
+            document.getElementById('detail-worker-list').textContent = areaPeople.length > 0
+                ? areaPeople.join(', ')
+                : '-';
+
+            // 주요 위험 요인 업데이트 (해당 구역의 최근 위반 유형)
+            const recentHazards = allAlerts
+                .filter(alert => alert.area === areaId)
+                .slice(0, 5)
+                .map(alert => alert.hazard)
+                .filter((v, i, a) => a.indexOf(v) === i); // 중복 제거
+            document.getElementById('detail-hazards').textContent = recentHazards.length > 0
+                ? recentHazards.join(', ')
+                : '-';
+
+            // 3. 이 구역에 해당하는 알림만 필터링해서 상세 리스트에 표시
+            const detailList = document.getElementById('detailAlertList');
+            detailList.innerHTML = ''; // 리스트 비우기
+            allAlerts
+                .filter(alert => alert.area === areaId)
+                .forEach(alert => {
+                    const newItem = document.createElement('li');
+                    newItem.innerHTML = `
+                        <span class="alert-time">[${alert.time}]</span>
+                        <span class="alert-level-${alert.level}">[${alert.level}]</span>
+                        <strong class="alert-who">${alert.worker}</strong>
+                        <br>${alert.hazard}
+                    `;
+                    detailList.prepend(newItem);
+                });
+
+            // 4. 이 구역의 시간대별 차트 데이터 업데이트 (실제 데이터 기반)
+            updateDetailChart(areaId);
+
+            // 5. 주기적으로 차트 업데이트 (30초마다)
+            if (detailChartUpdateInterval) {
+                clearInterval(detailChartUpdateInterval);
+            }
+            detailChartUpdateInterval = setInterval(() => {
+                const detailDashboard = document.getElementById('detail-dashboard');
+                if (detailDashboard && detailDashboard.style.display !== 'none') {
+                    updateDetailChart(areaId);
+                }
+            }, 30000); // 30초마다 업데이트
+        }
+
+        // 상세 뷰 차트 업데이트
+        function updateDetailChart(areaId) {
+            // 시간대별 위반 수 계산 (최근 7시간)
+            const now = new Date();
+            const hourData = [];
+            const hourLabels = [];
+
+            for (let i = 6; i >= 0; i--) {
+                const targetHour = new Date(now);
+                targetHour.setHours(now.getHours() - i, 0, 0, 0);
+                const hourKey = targetHour.getHours();
+                hourLabels.push(`${hourKey}시`);
+
+                // 해당 구역의 해당 시간대 위반 수 계산
+                const count = allAlerts.filter(alert => {
+                    if (alert.area !== areaId) return false;
+                    try {
+                        // timeDate가 있으면 사용, 없으면 time 문자열 파싱
+                        const alertTime = alert.timeDate || new Date(alert.time);
+                        if (isNaN(alertTime.getTime())) return false;
+
+                        const alertHour = alertTime.getHours();
+                        return alertHour === hourKey;
+                    } catch (e) {
+                        return false;
+                    }
+                }).length;
+
+                hourData.push(count);
+            }
+
+            // 차트 업데이트
+            if (detailHourChart) {
+                detailHourChart.data.labels = hourLabels;
+                detailHourChart.data.datasets[0].data = hourData;
+                detailHourChart.update();
+            }
+        }
+
+        // [핵심] 메인 뷰(전체) 보여주기
+        function showMainView() {
+            document.getElementById('main-dashboard').style.display = 'grid';
+            document.getElementById('detail-dashboard').style.display = 'none';
+            document.getElementById('back-button').style.display = 'none';
+
+            // 상세 뷰 차트 업데이트 인터벌 정리
+            if (detailChartUpdateInterval) {
+                clearInterval(detailChartUpdateInterval);
+                detailChartUpdateInterval = null;
+            }
+        }
+
+        // 대기 중인 알림 처리 (1초당 최대 1개)
+        function processPendingAlerts() {
+            const now = Date.now();
+
+            // 1초가 지났으면 다음 알림 처리
+            if (now - lastAlertTime >= ALERT_INTERVAL && pendingAlerts.length > 0) {
+                const alert = pendingAlerts.shift(); // 큐에서 첫 번째 알림 가져오기
+                addAlert(alert.level, alert.areaId, alert.personName, alert.hazard);
+                lastAlertTime = now;
+
+                // CCTV 하이라이트 (처리된 알림에 대해서만)
+                highlightCCTV(alert.areaId, alert.level);
+
+                // 다음 알림이 있으면 계속 처리
+                if (pendingAlerts.length > 0) {
+                    setTimeout(processPendingAlerts, ALERT_INTERVAL);
+                }
+            } else if (pendingAlerts.length > 0) {
+                // 아직 시간이 안 지났으면 잠시 후 다시 시도
+                setTimeout(processPendingAlerts, 100);
+            }
+        }
+
+        // 알림 리스트에 항목 추가 (전체 로그에도 저장)
+        function addAlert(level, area, worker, hazard) {
+            const now = new Date();
+            const timeStr = now.toLocaleTimeString('ko-KR');
+
+            // 1. 전체 로그에 저장 (상세 뷰 필터링용) - Date 객체도 함께 저장
+            allAlerts.push({
+                time: timeStr,
+                timeDate: now,  // 차트 업데이트용 Date 객체
+                level,
+                area,
+                worker,
+                hazard
+            });
+
+            // 2. 메인 대시보드 리스트에 추가
+            const list = document.getElementById('alertList');
+            const newItem = document.createElement('li');
+            newItem.innerHTML = `
+                <span class="alert-time">[${timeStr}]</span>
+                <span class="alert-level-${level}">[${level}]</span>
+                <strong class="alert-who">${worker}</strong> (<span class="alert-where">${area} 구역</span>)
+                <br>${hazard}
+            `;
+            list.prepend(newItem);
+            if (list.children.length > 10) list.lastChild.remove();
+
+            // 3. 상세 뷰가 열려있으면 해당 구역의 차트 업데이트
+            const detailDashboard = document.getElementById('detail-dashboard');
+            if (detailDashboard && detailDashboard.style.display !== 'none') {
+                const areaTitle = document.getElementById('detail-area-title');
+                if (areaTitle) {
+                    const currentAreaId = areaTitle.textContent.replace(' 구역 상세 정보', '').trim();
+                    if (currentAreaId === area) {
+                        updateDetailChart(area);
+                    }
+                }
+            }
+        }
+
+        // CCTV 피드 하이라이트 (메인 뷰에서만)
+        function highlightCCTV(areaId, level) {
+            document.querySelectorAll('.cctv-feed').forEach(feed => {
+                feed.classList.remove('highlight-danger', 'highlight-warning');
+            });
+            const targetFeed = document.getElementById(`cctv-${areaId}`);
+            if (targetFeed) {
+                targetFeed.classList.add(level === 'DANGER' ? 'highlight-danger' : 'highlight-warning');
+                setTimeout(() => {
+                    targetFeed.classList.remove('highlight-danger', 'highlight-warning');
+                }, 2000);
+            }
+        }
+    </script>
+
+</body>
+
+</html>
