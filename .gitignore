@@ -13,8 +13,9 @@ __pycache__/
 
 *.csv
 
-# Documentation - 주의: README.md 같은 문서는 포함되어야 할 수 있음
+# Documentation - README.md는 포함
 *.md
+!README.md
 
 *.txt
 !requirements.txt
