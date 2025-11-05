@@ -1,0 +1,10 @@
+torch
+torchvision
+ultralytics
+opencv-python
+numpy
+insightface==0.7.3
+onnxruntime
+faiss-cpu # 또는 GPU 버전인 faiss-gpu
+mediapipe
+Pillow
